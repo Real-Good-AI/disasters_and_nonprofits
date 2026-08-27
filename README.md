@@ -1,6 +1,12 @@
 # Natural Hazard/Disaster Damage and the Nonprofit Sector
-**NOTE**: This project uses the harmonized/core/ (pre-tier layout) of the NCCS Core Files, which is now deprecated. 
-This is because the files were downloaded in 2025 prior to the new tier system. 
+Welcome to our disasters and nonprofits project repository. 
+This repo contains code for reproducing the results from [our manuscript](). 
+Some select data files are also included, but in general to reproduce the results you would need to go through this repo step by step, beginning by downloading the raw data files and ending with the analysis presented in the paper.
+Below, you find instructions on reproducing the data cleaning and processing, which is the first step to reproducing the results.
+
+**NOTE**: This project uses the harmonized/core/ (pre-tier layout) of the [National Center for Charity Statistics (NCCS) Core Files](https://nccs.urban.org/nccs/datasets/core/), which is now deprecated. 
+This is because the files were downloaded in 2025 prior to the new tier system, which launched in 2026. 
+> The citation for the version we downloaded is *Lacy, Jesse (2024). NCCS Core Series.*
 
 ## Data Cleaning and Pre-processing (General)
 This section goes through the step-by-step workflow for reproducing the data cleaning and processing for this project using the scripts in this directory.
@@ -60,9 +66,17 @@ Finally, to build the county-year panel that aggregates nonprofit data at the co
 You will need to uncomment the last line of code to save the result. This should produce the file `county_long.rds` in the `data/` directory.
 
 ## Two Distinct Approaches
+After completing the general data cleaning and processing, you can proceed with reproducing results from the paper.
+To reproduce the results in the main body of the paper, go to the `causal_approach/` directory. 
+To reproduce the results from our bonus GP analysis (found in the appendix) , go to the `gp_approach/` directory.
 The directories `causal_approach/` and `gp_approach/` each contain data processing and analysis files specific to the corresponding approach. While most of the data cleaning and processing was identical, each approach required certain small adjustments for different reasons. 
 Thus, there are some minor additional data cleaning or processing steps within each folder. 
+
+For  `causal_approach/`, begin with the file `main_analysis.Rmd`. 
+For additional analysis under the causal approach that did not make it into the main body of the paper, follow the `misc_analyses.Rmd` file.
+Most results will be saved in one of the following three directories (which are created in the `main_analysis.Rmd` file): `panel_data/`, `matches/`, or `balances/`
 
 For `gp_approach/`, begin with the file `county_level_analysis.Rmd`. 
 After finishing the county-level analysis, you may continue with `org_level_analysis.Rmd`.
 Files produced in these scripts should be saved to a directory called `gp_data/`.
+
