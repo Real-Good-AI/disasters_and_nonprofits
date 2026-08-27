@@ -13,7 +13,7 @@ This section goes through the step-by-step workflow for reproducing the data cle
 You will need to download the data. 
 
 First, ensure that the working directory is set to `disasters_and_nonprofits/` i.e the main directory of this Github repo.
-> Note: the files you will run to clean and process the data are in the `clean_and_process/`, but they all assume that your working directory is `disasters_and_nonprofits/`.
+> Note: the files you will run to clean and process the data are in `clean_and_process/`, but they all assume that your working directory is `disasters_and_nonprofits/` and any output is saved to the `disasters_and_nonprofits/data/` directory.
 
 Then, run the file `clean_and_process/download_data.R`.
 After running the file, you should see the following in the `disasters_and_nonprofits/data/` directory:
