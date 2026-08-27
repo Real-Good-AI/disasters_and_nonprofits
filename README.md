@@ -25,10 +25,13 @@ After running the file, you should see the following subdirectories in the `disa
 The `pc/` directory should be empty. The other two should be populated with CORE files.
 
 ### Unified Business Master File (BMF)
-Unfortunately, it seems you can no longer directly download the file version we used for the BMF from the NCCS website directly, so in order to use the same file we used, please download the file shared via this [Google Drive link](https://drive.google.com/file/d/1FYf_TSUtSwUj5_1990PtaXcuNRQhhl8G/view?usp=sharing) and save it to the `data/` directory.
+Please download the raw BMF file via this [Google Drive link](https://drive.google.com/file/d/1FYf_TSUtSwUj5_1990PtaXcuNRQhhl8G/view?usp=sharing) and save it to the `data/` directory.
+> You used to be able to download directly from the NCCS website but it looks like that link no longer works.
+
 Next, you will need to clean and process the raw Unified BMF file (`BMF_UNIFIED_V1.1.csv`) by running the file `cleanBMF.R`. 
 This should produce the cleaned BMF file in the `data` folder with the file name `cleanBMF.rds`. 
-This must be done **before running** `cleanPZ.R`, `cleanPF.R`, or `create_mega_df.R`.
+
+This must be completed **before running** `cleanPZ.R`, `cleanPF.R`, or `create_mega_df.R`.
 
 ### The CORE Files
 At the time we began this project, the raw CORE files were indexed by year, tax-exampt class, and tax form scope.
@@ -37,13 +40,16 @@ For tax-form scope, PFs have their own tax form to fill out. The remaining non-P
 We need to clean, process, and merge all the files together to get a "mega" dataset that includes the tax info from ALL charities, across ALL years 1991-2021 across ALL form types.
 
 The files `cleanPZ.R` and `cleanPF.R` both take in raw CORE files, do some cleaning and pre-processing (including merging with the cleaned BMF file), and return the files that are used to create the final "mega" dataframe.
-The outputs of `cleanPZ.R` and `cleanPF.R` are fed to `create_mega_df.R`, which does the final merge. **NOTE**: By default, in `cleanPZ.R`, `cleanPF.R`, and `create_mega_df.R` the lines where the files are saved are commented out. 
+The outputs of `cleanPZ.R` and `cleanPF.R` are fed to `create_mega_df.R`, which does the final merge. 
+> **NOTE**: By default, in `cleanPZ.R`, `cleanPF.R`, and `create_mega_df.R` the lines where the files are saved are commented out. 
 You will need to uncomment them before running the files. Within each file, look for the following text: "uncomment this line of code to save the file"
 
-Running `cleanPF.R` will produce a file `pf_processed.rds` in the `data` directory. 
+Running `cleanPF.R` will produce a file `pf_processed.rds` in the `data` directory.
+
 The `cleanPZ.R` file is used to produce TWO different files, but to do so you must run the file two separate times, changing certain variable names between the runs.
 This is because the non-PF charities are split into two groups: the 501c3 charities and all other 501c types (denoted 501ce in the files/code). 
 The processing is almost exactly the same for both, but some variable names need to be changed. In the file, search for the following phrase "SPECIFIC TO PZ TYPE" to know which lines to change.
+
 In total, after two separate runs, the following files should be in your `data` directory:
 
 * (501c3 run) `pz_merged.rds`, `pz_merged_bmf.rds`, `pz_processed.rds`
