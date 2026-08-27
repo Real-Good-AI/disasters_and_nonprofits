@@ -155,7 +155,12 @@ if (pz_type == "C3-CHARITIES") {savePath <- "data/pz_merged.rds"} else {savePath
 ###################################
 ######## STEP TWO #################
 ###################################
-rm(list=ls())
+# Source - https://stackoverflow.com/a/6190319
+# Posted by Andrie
+# Retrieved 2026-08-27, License - CC BY-SA 3.0
+
+rm(list=setdiff(ls(), "pz_type"))
+
 library(data.table)
 library(readr)
 
@@ -180,7 +185,7 @@ if (pz_type == "C3-CHARITIES"){savePath <- "data/pz_merged_bmf.rds"} else {saveP
 ###################################
 ######## STEP THREE ###############
 ###################################
-rm(list=ls())
+rm(list=setdiff(ls(), "pz_type"))
 library(data.table)
 library(readr)
 library(dplyr)
