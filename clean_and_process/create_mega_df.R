@@ -21,7 +21,7 @@ dt <- distinct(dt)
 rm(pf, pz, pz.ce)
 
 # exploring duplicates in the mega dt
-source("../SCRIPTS/clean_helper.R")
+source("clean_and_process/helper.R")
 
 key_var <- c("EIN2", "TAX_YEAR")
 dup_groups <- dt[, .N, by = key_var][N > 1] #
