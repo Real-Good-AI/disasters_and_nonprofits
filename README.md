@@ -48,7 +48,7 @@ Running `cleanPF.R` will produce a file `pf_processed.rds` in the `data` directo
 
 The `cleanPZ.R` file is used to produce TWO different files, but to do so you must run the file two separate times, changing certain variable names between the runs.
 This is because the non-PF charities are split into two groups: the 501c3 charities and all other 501c types (denoted 501ce in the files/code). 
-The processing is almost exactly the same for both, but some variable names need to be changed. In the file, search for the following phrase "SPECIFIC TO PZ TYPE" to know which lines to change.
+The processing is almost exactly the same for both, but one variable name needs to be changed. In the file, search for the following phrase "SPECIFIC TO PZ TYPE" to know which line to change.
 
 In total, after two separate runs, the following files should be in your `data` directory:
 
