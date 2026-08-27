@@ -1,4 +1,4 @@
-# RGAI Rating: 4
+# REAL Rating: 4
 # https://chatgpt.com/share/69962c59-3838-8003-84f4-340e126a124b
 # https://chatgpt.com/share/6996104a-dbec-8003-8d0c-0655d888c942
 library(data.table)
@@ -100,7 +100,7 @@ rm(ntee, df.ntee_rev, df.tot_rev, df.size_rev)
 counties <- as.data.table(read_csv("data/counties_data/uscounties.csv", show_col_types = FALSE))
 counties <- counties |> select(-county_ascii, - county, - population) |> rename(CENSUS_STATE_ABBR = state_id)
 
-source("../SCRIPTS/clean_helper.R")
+source("clean_and_process/helper.R")
 counties <- add_regions_and_divisions(counties)
 
 # Some counties must be filled in manually
