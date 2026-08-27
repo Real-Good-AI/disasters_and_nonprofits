@@ -1,0 +1,798 @@
+---
+title: "Main Analysis"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = FALSE)
+```
+
+The causal analysis is conducted with the [ `PanelMatch`](https://cran.r-project.org/web/packages/PanelMatch/index.html) package in R. When I make references to figures and tables, I'm referring to our paper.
+
+```{r}
+getwd() # should be the causal_approach folder!!!
+```
+
+
+# Setup
+First, let's create some directories. Note you may eventually need to create more depending on the analyses you run, but this should at least help get through the default settings.
+```{r}
+if (!dir.exists("panel_data")) {dir.create("panel_data")}
+
+if (!dir.exists("matches")) {dir.create("matches")}
+
+if (!dir.exists("balances")) {dir.create("balances")}
+
+if (!dir.exists("matches/no_svc/int_panelV1/config3")) {dir.create("matches/no_svc/int_panelV1/config3")}
+
+if (!dir.exists("balances/no_svc/int_panelV1/config3")) {dir.create("balances/no_svc/int_panelV1/config3")}
+```
+
+To use the package, data must be formatted in a particular way. Note that this file assumes the user has already completed the data cleaning and processing in the parent directory. 
+
+By default, this chunk of code uses raw latitude and longitude coordinates (instead of spatially varying coefficients) as adjustment variables. As described in the paper, we tested out both approaches and ultimately chose spatially varying coefficients because we found they resulted in slightly better covariate balance overall. To run with spatially varying coefficients instead, look for line with the following comment: "UNCOMMENT FOR SVC". Note that the last line saves the resulting data object. Follow the instructions in the comments for the file save name convention, which changes depending on whether you use SVC or not.
+```{r}
+library(data.table)
+library(readr)
+library(tidyr)
+library(dplyr)
+library(tidyverse)
+library(PanelMatch)
+library(ggplot2)
+library(writexl)
+library(haven)
+library(geosphere)
+library(fastDummies)
+source("matches_helper.R")
+
+df <- readRDS("../data/county_long.rds") # Load the county-year panel dataset
+df <- df |> 
+      group_by(geoid_2010) |>
+      mutate(CountyID = as.integer(cur_group_id())) |>
+      ungroup() # The PanelMatch library requires that each individual county have a unique integer ID
+
+# make sure these are numeric
+df <- df |> mutate(across(all_of(c("bachelors_perc", "med_household_income_adj", "white_perc")), as.numeric)) # Some of these variables were encoded as string when downloaded, so converting to numeric for use with calculations
+
+# Add REGION (WEST, MIDWEST, SOUTH, NORTHEAST) dummy columns
+df <- df |> dummy_cols(select_columns = c("REGION"), ignore_na = FALSE, remove_selected_columns = TRUE, remove_first_dummy = FALSE)
+
+# These are the some of the variables we will adjust for
+adj_set <- c("bachelors_perc", "med_household_income_adj", "white_perc",  "total_population", "TOT_REV", "TOT_ASSET","TOT_EXP", "lat", "lng")
+
+# Other variables we will adjust for, split by type (NTEE or region)
+ntee_vars <- grep("^NTEEV2_", names(df), value = TRUE)
+region_vars <- grep("^REGION_", names(df), value = TRUE)
+
+df <- df |> dplyr::select(all_of(c(c("CountyID", "TAX_YEAR", "geoid_2010", "treat.FEMA"), adj_set, ntee_vars, region_vars))) # keep only the variables we need for the analysis
+
+# Log transformations (first take care of negatives)
+df <- df |> mutate(TOT_REV = case_when(TOT_REV < 0 ~ 0,
+                                       .default = TOT_REV),
+                   TOT_ASSET = case_when(TOT_ASSET < 0 ~ 0,
+                                       .default = TOT_ASSET),
+                   TOT_EXP = case_when(TOT_EXP < 0 ~ 0,
+                                       .default = TOT_EXP))
+
+df <- df |> mutate(TOT_REV = log1p(TOT_REV),
+                   TOT_ASSET = log1p(TOT_ASSET),
+                   TOT_EXP = log1p(TOT_EXP),
+                   med_household_income_adj = log1p(med_household_income_adj),
+                   total_population = log(total_population))
+
+# Create new treatment variable (i.e. the exposure variable) that takes a distance-based cutoff adjustment
+adj_lists <- create_adj_list(panel_data = df, dist_cutoff = 25)
+
+res <- add_exposed(panel_data = df, adj_list = adj_lists$union, treatment = "treat.FEMA")
+
+df <- res$df |> mutate(treat.FEMA.adj = replace_na(treat.FEMA.adj, 1))
+
+per_year_summary <- df |> group_by(TAX_YEAR) |>
+      summarise(
+            n_1 = sum(treat.FEMA.adj == 1, na.rm = TRUE),
+            n_0 = sum(treat.FEMA.adj == 0, na.rm = TRUE),
+            n = n())
+
+paste("Treated")
+quantile(per_year_summary$n_1, probs = seq(0,1,0.1))
+
+paste("Control")
+quantile(per_year_summary$n_0, probs = seq(0,1,0.1))
+
+paste("Total")
+quantile(per_year_summary$n, probs = seq(0,1,0.1))
+
+df$treat.FEMA <- NULL
+
+# Adding spatially varying coefficients (SVC)
+# df <- add_SVC(df, num_E_vec = 50) # UNCOMMENT FOR SVC
+
+# https://stackoverflow.com/questions/74815244/panelmatch-r-errors-please-convert-time-id-to-consecutive-integers-and-pleas
+panel_df <- PanelData(panel.data = as.data.frame(df),
+                      unit.id = "CountyID",
+                      time.id = "TAX_YEAR",
+                      treatment = "treat.FEMA.adj",
+                      outcome = "TOT_REV")
+
+DisplayTreatment(panel.data = panel_df, 
+                  color.of.treated = "#DC267F", #"#FFB000"
+                  color.of.untreated = "#648FFF", #"#785EF0"
+                  title = "Exposure Distribution Across Units and Time",
+                  xlab = "Tax Year", ylab = "County", 
+                  legend.position = "right",
+                  legend.labels = c("unexposed", "exposed"),
+                  hide.x.tick.label = TRUE, hide.y.tick.label = TRUE, 
+                  dense.plot = TRUE)
+
+save_name <- "V1.rds" # For SVC, use "V2.rds" (if not doing SVC, use "V1.rds";)
+# saveRDS(panel_df, paste0("panel_data/int_panel", save_name))
+```
+
+# Matching Phase
+The script that we use to do the matching is the file `run_matching.R`. Here we explain how to use that file to conduct matching. Note that the file `run_matching.R` expects your working directory to be the `causal_approach` folder!
+
+First, the file is set up to have a default configuration of parameters so you can run it with just raw latitude and longitude coordinates instead of SVC. In other words, if you run the code block in the previous section (Setup) with its default (i.e. using raw lat/long coords instead of SVC), it should save "int_panelV1.rd" to the `panel_data` directory. Then you should be able to run the file run_matching.R without changing anything. By default, it chooses the refinement method "none" which means it does not perform matching. If you want to do literally anything else, change the variable called `default` to `FALSE`.
+
+**For running other analyses, I would first familiarize yourself with the documentation for the functions [`PanelMatch`](https://cran.r-project.org/web/packages/PanelMatch/refman/PanelMatch.html#PanelMatch) and [`get_covariate_balance`](https://cran.r-project.org/web/packages/PanelMatch/refman/PanelMatch.html#get_covariate_balance) from the `PanelMatch` library, since these are the main functions used to perform the matching and to get the resulting covariate balance.** Literally the rest of the script is just functionality for being able to run multiple matching configurations and save the results (e.g. if running overnight). NOTE: `PanelMatch` is the name of the R library, but it is also the name of one of the main functions inside the library, i.e. the function that is used to perform matching. Below, I try to stick to PanelMatch without the tic marks when referring to the library, and use the tic marks (`PanelMatch`) when referring to the function... but I may have missed some so try to use context clues!
+
+## How the `run_matching.R` script works
+At a high level, the script works by iterating through different matching "models". These "models" are really just different matching configurations. In the code, they are represented by named lists. The code chunk below is an example of a model. 
+```
+list("full_path" = "no_svc/int_panelV1/config3/",
+                 "data" = "panel_data/int_panelV1.rds",
+                 "match_on_NA" = FALSE,
+                 "svc_flag" = FALSE,
+                 "J" = 20)
+```
+
+- The named element `"full_path"` is the path you want to save the results to. The matching object returned by `PanelMatch` will be saved to "matches/full_path", while the covariate balance object returned by `get_covariate_balance` will be saved to "balances/full_path". NOTE: YOU MAY NEED TO CREATE DIRECTORIES FOR THIS TO WORK (only the default ones were created in the previous section of this notebook) 
+- The named element `"data"` is the path to the PanelData object created in the previous section (Setup) of this notebook.
+- The named element `"match_on_NA"` is a TRUE/FALSE value that gets passed to the argument `match.missing` in the `PanelMatch` function
+- The named element `"svc_flag"` is a TRUE/FALSE value that is TRUE when spatially varying coefficients (SVC) are being used, FALSE otherwise
+- The named element `"J"` is an integer value that gets passed to the argument `size.match` in the `PanelMatch` function 
+
+There are other variables you will find in the run_matching.R script.
+
+- `refine_methods` is a list of strings, each corresponding to a refinement method for the PanelMatch function, passed as the argument `refinement.method`. Refer to the `PanelMatch` function documentation for possible refinement methods. Note that I always tried all of the following methods: "none", "ps.match", "CBPS.match", "ps.weight", "CBPS.weight" -- later in the notebook, we compare the resulting balance from each method and pick the one with the best balance.
+- `lags` is a vector of integers, each corresponding to a potential value for the lag period also used in the PanelMatch function
+- `save_methods` is a named list of strings; the names should be the strings in `refine_methods` and the corresponding value is how you want to identify those results in the file name
+- `matching_flags` is a named list of TRUE/FALSE values; the names should be the strings in `refine_methods` and the corresponding value gets passed to the `matching` argument of the `PanelMatch` function.
+- `no_interference_model_list` is a list of models (aka matching configurations) but specifically where we DO NOT account for spillovers; this is really for the miscellaneous analyses, not the main one; so, if you're trying to reproduce results from the paper you likely wouldn't use this variable
+- `interference_model_list` is a list of models (aka matching configurations) but specifically where WE DO account for spillovers, i.e. we use the exposure variable instead of the original treatment variable
+
+Currently, all the models I tried are commented out in `no_interference_model_list` and `interference_model_list`. The `"full_path"` element has most of the relevant details. The following knobs were turned:
+
+- using raw lat/long coords versus SVC (`no_svc/` versus `with_svc/`)
+- using original treatment variable versus exposure variable (`no_int_panelV*/` versus `int_panelV*/`)
+- if this is a robustness check from Appendix E of the paper, the full path will start with `misc_analysis/`
+- using one of the four possible configurations (which I have not defined yet but do so below) e.g  `config2/` or `config3/` 
+
+## Output
+The run_matching file will save three data objects. One in the `matches/` directory, and two in the `balances/` directory (although they will be in subdirectories depending on what you pass to the `"full_path"` model argument.) To the `matches/` directory will be saved a named list of match objects returned by the `PanelMatch` function in `.rds` format. The names correspond to the `refine_methods` variable. To the `balances/` directory is saved a named list (where names also correspond to the `refine_methods` variable) of covariate balance objects in `.rds` format, which are produced by PanelMatch's `get_covariate_balance` function. In addition, a `.xlsx` file is saved. This was convenience for me because I liked being able to open up an Excel spreadsheet to look at the balances, and I wanted each tab of the spreadsheet to correspond to a different element of the list. It just worked out well this way, but in theory you don't need the `.xlsx` file, just the `.rds` file.
+
+## So-called "configurations"
+There were technically 4 total configurations. However, to be honest, only configuration 3 really matters as those were the final settings used for the main analysis in the paper. The first two configurations happened while I was still working out some kinks. The 4th configuration was a bonus analysis we ended up not using in the final paper because configuration 3 made more sense.
+
+- Configuration 1: This was the first thing I started with. Originally, the distance cutoff for exposure was 50. I set J (the argument `size.match` in the `PanelMatch` function) to 10. Also, the variable `TAX_YEAR` was in the formulas passed to the argument `covs.formula` in the `PanelMatch` function because I did not realize the method by default already has a time fixed effect. I also only used 60 spatially varying coefficients. No variables are log transformed.
+- Configuration 2: `TAX_YEAR` was removed from the formulas. J was increased to 20. The number of spatially varying coefficients was increased to 100. Revenue, assets, expenses were log transformed. Distance cutoff for exposure was set to 25.
+- Configuration 3: Revenue, assets, expenses were adjusted for inflation; `TOT_EXP` variable was added to the formulas passed to the argument `covs.formula`. Total population and median household income are log transformed, in addition to revenue, assets, and expenses. Number of spatially varying coefficients is 100. Distance cutoff for exposure is 25.
+- Configuration 4: Everything is the same as configuration 3 EXCEPT that we use raw, not logged, values for revenue, assets, and expenses.
+
+Thus, to reproduce the main results from the paper, you would want to run with the following. But note you would have to make sure the appropriate data file is created. For the misc analyses, refer to the `misc_analyses.Rmd file`.
+```{r}
+interference_model_list <- list(
+      list("full_path" = "with_svc/int_panelV2/config3/", # main analysis with SVC
+           "data" = "panel_data/int_panelV2.rds",
+           "match_on_NA" = FALSE,
+           "svc_flag" = TRUE,
+           "J" = 20),
+      list("full_path" = "no_svc/int_panelV1/config3/", # main analysis with raw lat/long coords instead of SVC
+           "data" = "panel_data/int_panelV1.rds",
+           "match_on_NA" = FALSE,
+           "svc_flag" = FALSE, 
+           "J" = 20)
+)
+```
+
+# Analyzing the Matching Phase Results
+Just to reiterate: For the main body of the paper, the results correspond to the following models from the `run_matching.R`. Thus, the code chunks in this section assume you've gotten those results, i.e. that the following files exist:
+
+- matches/with_svc/int_panelV2/config3/Lag3.rds
+- balances/with_svc/int_panelV2/config3/Lag3.rds
+- matches/no_svc/int_panelV1/config3/Lag3.rds
+- balances/no_svc/int_panelV1/config3/Lag3.rds
+
+```{}
+interference_model_list <- list(
+      list("full_path" = "with_svc/int_panelV2/config3/", # main analysis with SVC
+           "data" = "panel_data/int_panelV2.rds",
+           "match_on_NA" = FALSE,
+           "svc_flag" = TRUE,
+           "J" = 20),
+      list("full_path" = "no_svc/int_panelV1/config3/", # main analysis with raw lat/long coords instead of SVC
+           "data" = "panel_data/int_panelV1.rds",
+           "match_on_NA" = FALSE,
+           "svc_flag" = FALSE, 
+           "J" = 20)
+)
+```
+
+## With SVC
+First, we pull the data created in run_matching.R. At the bottom of this chunk of code, we plot the distribution of matched set sizes (like Figure 3).
+```{r}
+library(readr)
+library(dplyr)
+library(tidyverse)
+library(PanelMatch)
+library(ggplot2)
+library(writexl)
+library(tidyr)
+library(stringr)
+library(khroma)
+source("matches_helper.R")
+
+# Set up the folder path and saved object names
+L = 3 # lag
+folder_path_match <- "matches/with_svc/int_panelV2/config3/"
+folder_path_balance <- "balances/with_svc/int_panelV2/config3/"
+save_name <- paste0("Lag", L)
+
+# Retrieve the PanelMatch objects
+matches_list <- readRDS(paste0(folder_path_match, save_name, ".rds"))
+
+# Retrieve the PanelBalance objects
+balances_list <- readRDS(paste0(folder_path_balance, save_name, ".rds"))
+
+# Make the balances for each lag easy to work with as a dataframe
+bal_df <- lapply(balances_list, summary)
+bal_df <- lapply(bal_df, as.data.frame)
+bal_df <- lapply(bal_df, tibble::rownames_to_column, var = "time")
+
+# Print information about matching and balances
+# write.csv(as.data.frame(summary(matches_list$none)), "match_summary.csv")
+summary(matches_list$none)
+summary(matches_list$ps.match)
+# summary(matches_list$CBPS.match)
+# summary(matches_list$ps.weight)
+# summary(matches_list$CBPS.weight)
+# 
+plot(matches_list$none) 
+```
+
+
+Default Scatter Plots (See PanelMatch library for documentation)
+```{r}
+plot(balances_list$ps.match, type = "scatter", include.unrefined.panel = TRUE, legend = TRUE,
+     ylim = c(-0.01,.1), main = "Standardized Mean Difference of Covariates (PS Matching)")
+plot(balances_list$CBPS.match, type = "scatter", include.unrefined.panel = TRUE, legend = TRUE,
+     ylim = c(-0.01,.1), main = "Standardized Mean Difference of Covariates (CBPS Matching)")
+plot(balances_list$ps.weight, type = "scatter", include.unrefined.panel = TRUE, legend = TRUE,
+     ylim = c(-0.01,.1), main = "Standardized Mean Difference of Covariates (PS Weighting)")
+plot(balances_list$CBPS.weight, type = "scatter", include.unrefined.panel = TRUE, legend = TRUE,
+     ylim = c(-0.01,.1), main = "Standardized Mean Difference of Covariates (CBPS Weighting)")
+```
+
+My Covariate Balance Plots: this is how I got plots like the ones in Figure 4
+```{r}
+covs_to_check <- c("bachelors_perc", "med_household_income_adj", "white_perc",  "total_population", "TOT_REV", "TOT_ASSET", "TOT_EXP", "NTEEV2_ART", "NTEEV2_EDU", "NTEEV2_ENV", "NTEEV2_HEL", "NTEEV2_HMS", "NTEEV2_HOS", "NTEEV2_IFA", "NTEEV2_MMB", "NTEEV2_PSB", "NTEEV2_REL", "NTEEV2_UNI", "NTEEV2_UNU", "NTEEV2_NA", "REGION_MIDWEST", "REGION_NORTHEAST", "REGION_SOUTH", "REGION_WEST")
+
+# this just takes the covariate balance objects and tidies it up so I can make pretty plots
+# tidy_bal_df is defined in the matches_helper.R script
+bal_none <- tidy_bal_df(bal_data = bal_df$none, covariates = paste0("m.out.",covs_to_check))
+bal_ps.match <- tidy_bal_df(bal_data = bal_df$ps.match, covariates = paste0("m.out.",covs_to_check))
+bal_cbps.match <- tidy_bal_df(bal_data = bal_df$CBPS.match, covariates = paste0("m.out.",covs_to_check))
+bal_ps.weight <- tidy_bal_df(bal_data = bal_df$ps.weight, covariates = paste0("m.out.",covs_to_check))
+bal_cbps.weight <- tidy_bal_df(bal_data = bal_df$CBPS.weight, covariates = paste0("m.out.",covs_to_check))
+```
+
+```{r}
+# this makes pretty plots 
+# no_int_no_SVC_plots is defined in the matches_helper.R script and despite its name it DOES work when interference is accounted for and whether or not SVC are used
+ylims <- list("base" = c(-0.15, 0.05), "ntee" = c(-0.15, 0.05), "loc" = c(-0.17,0.17), "unrefined" = c(-0.15, 0.05), "all" = c(-0.17, 0.17))
+p_none <- no_int_no_SVC_plots(bal_none,
+                              match_method = "No Matching",
+                              ylim_base = ylims[["base"]], 
+                              ylim_ntee = ylims[["ntee"]],
+                              ylim_loc = ylims[["loc"]],
+                              ylim_all = ylims[["all"]],
+                              include.unrefined.panel = FALSE)
+p_ps.match <- no_int_no_SVC_plots(bal_ps.match, 
+                                  match_method = "PS Matching",
+                                  ylim_base = ylims[["base"]], 
+                                  ylim_ntee = ylims[["ntee"]],
+                                  ylim_loc = ylims[["loc"]],
+                                  ylim_all = ylims[["all"]],
+                                  ylim_unrefined = ylims[["unrefined"]],
+                                  include.unrefined.panel = TRUE)
+p_cbps.match <- no_int_no_SVC_plots(bal_cbps.match,
+                                  match_method = "CBPS Matching",
+                                  ylim_base = ylims[["base"]], 
+                                  ylim_ntee = ylims[["ntee"]],
+                                  ylim_loc = ylims[["loc"]],
+                                  ylim_all = ylims[["all"]],
+                                  include.unrefined.panel = FALSE)
+p_ps.weight <- no_int_no_SVC_plots(bal_ps.weight,
+                                  match_method = "PS Weighting",
+                                  ylim_base = ylims[["base"]], 
+                                  ylim_ntee = ylims[["ntee"]],
+                                  ylim_loc = ylims[["loc"]],
+                                  ylim_all = ylims[["all"]],
+                                  include.unrefined.panel = FALSE)
+p_cbps.weight <- no_int_no_SVC_plots(bal_cbps.weight,
+                                  match_method = "CBPS Weighting",
+                                  ylim_base = ylims[["base"]], 
+                                  ylim_ntee = ylims[["ntee"]],
+                                  ylim_loc = ylims[["loc"]],
+                                  ylim_all = ylims[["all"]],
+                                  include.unrefined.panel = FALSE)
+
+options(repr.plot.width = 6, repr.plot.height = 4)
+
+# Each of these produce plots highlighting the balance of different variables (separated for visual clarity); p_none$all and p_cbps.weight$all are the plots you see in Figure 4
+p_none$all
+# p_ps.match$all_unrefined
+# p_ps.match$all
+# p_cbps.match$all
+# p_ps.weight$all
+p_cbps.weight$all
+# 
+# p_none$base
+# p_ps.match$base_unrefined
+# p_ps.match$base
+# p_cbps.match$base
+# p_ps.weight$base
+# p_cbps.weight$base
+# 
+# p_none$ntee
+# p_ps.match$ntee_unrefined
+# p_ps.match$ntee
+# p_cbps.match$ntee
+# p_ps.weight$ntee
+# p_cbps.weight$ntee
+# 
+# p_none$loc
+# p_ps.match$loc_unrefined
+# p_ps.match$loc
+# p_cbps.match$loc
+# p_ps.weight$loc
+# p_cbps.weight$loc
+
+### IF THE REST OF THIS CODE DOESN"T WORK YOU CAN COMMENT OUT... its supposed to create Figure 4 i.e. put the two plots side by side with the legend underneath but this code gave me so much grief and I wouldn't be surprised if it doesn't work on someone else's computer tbh
+library(cowplot)
+leg <- get_legend(p_none$all + theme(legend.position="bottom"))
+
+
+# g <- ggplotGrob(tmp)
+# leg <- g$grobs[[which(g$layout$name == "guide-box-bottom")]]
+# 
+prow <- plot_grid(p_none$all + theme(legend.position="none") + labs(title = "No Matching"), 
+                  p_cbps.weight$all + theme(legend.position="none") + labs(title = "CBPS Weighting"), 
+                  labels = "AUTO", hjust = -1, nrow = 1)
+plot_grid(prow, leg, ncol = 1, rel_heights = c(2, 1))
+```
+
+The following chunk of code is how I got the information for tables like Table 1. Some stuff is commented out because I was using it in intermediate steps to check results.
+```{r}
+# compute deciles
+q_none <- quantile(signif(abs(bal_none$value[bal_none$unrefined == FALSE]), 3), probs = seq(0,1,0.1))
+q_ps.mat <- quantile(signif(abs(bal_ps.match$value[bal_ps.match$unrefined == FALSE]), 3), probs = seq(0,1,0.1))
+q_cbps.mat <- quantile(signif(abs(bal_cbps.match$value[bal_cbps.match$unrefined == FALSE]), 3), probs = seq(0,1,0.1))
+q_ps.w <- quantile(signif(abs(bal_ps.weight$value[bal_ps.weight$unrefined == FALSE]), 3), probs = seq(0,1,0.1))
+q_cbps.w <- quantile(signif(abs(bal_cbps.weight$value[bal_cbps.weight$unrefined == FALSE]), 3), probs = seq(0,1,0.1))
+
+# put the deciles into a data frame
+df <- cbind(as.data.frame(q_none), as.data.frame(q_ps.mat), as.data.frame(q_cbps.mat), as.data.frame(q_ps.w), as.data.frame(q_cbps.w))
+
+# pick the winner in each row, i.e. min value in each row
+# the overall winning refinement method is the one with the most rows that are winners if that makes sense
+df$winner <- colnames(df)[max.col(-df, ties.method = "first")]
+
+write.csv(df, file = paste0(folder_path_balance, save_name, "deciles.csv"))
+
+# write.csv(bal_none |> filter(unrefined == FALSE) |> select(-unrefined) |>
+#                 pivot_wider(names_from = covariate, values_from = value) |>
+#                 mutate(across(where(is.numeric), ~ round(.x, digits = 5))),
+#           file = "balance.csv")
+# 
+# write.csv(bal_cbps.weight |> filter(unrefined == FALSE) |> select(-unrefined) |>
+#                 pivot_wider(names_from = covariate, values_from = value) |>
+#                 mutate(across(where(is.numeric), ~ round(.x, digits = 5))),
+#           file = "balance.csv")
+```
+
+## NO SVC
+First, we pull the data created in run_matching.R. At the bottom of this chunk of code, we plot the distribution of matched set sizes (like Figure 3).
+```{r}
+library(readr)
+library(dplyr)
+library(tidyverse)
+library(PanelMatch)
+library(ggplot2)
+library(writexl)
+library(tidyr)
+library(stringr)
+library(khroma)
+source("matches_helper.R")
+
+# Set up the folder path and saved object names
+L = 3 # lag, options: 1, 3, 5
+folder_path_match <- "matches/no_svc/int_panelV1/config3/"
+folder_path_balance <- "balances/no_svc/int_panelV1/config3/"
+save_name <- paste0("Lag", L)
+
+# Retrieve the PanelMatch objects
+matches_list <- readRDS(paste0(folder_path_match, save_name, ".rds"))
+
+# Retrieve the PanelBalance objects
+balances_list <- readRDS(paste0(folder_path_balance, save_name, ".rds"))
+
+# Make the balances for each lag easy to work with as a dataframe
+bal_df <- lapply(balances_list, summary)
+bal_df <- lapply(bal_df, as.data.frame)
+bal_df <- lapply(bal_df, tibble::rownames_to_column, var = "time")
+
+# Print information about matching and balances
+# write.csv(as.data.frame(summary(matches_list$none)), "match_summary.csv")
+summary(matches_list$none)
+summary(matches_list$ps.match)
+# summary(matches_list$CBPS.match)
+# summary(matches_list$ps.weight)
+# summary(matches_list$CBPS.weight)
+# 
+plot(matches_list$none)
+```
+
+Default Scatter Plots (See PanelMatch library for documentation)
+```{r}
+plot(balances_list$ps.match, type = "scatter", include.unrefined.panel = TRUE, legend = TRUE,
+     ylim = c(-0.01,.1), main = "Standardized Mean Difference of Covariates (PS Matching)")
+plot(balances_list$CBPS.match, type = "scatter", include.unrefined.panel = TRUE, legend = TRUE,
+     ylim = c(-0.01,.1), main = "Standardized Mean Difference of Covariates (CBPS Matching)")
+plot(balances_list$ps.weight, type = "scatter", include.unrefined.panel = TRUE, legend = TRUE,
+     ylim = c(-0.01,.1), main = "Standardized Mean Difference of Covariates (PS Weighting)")
+plot(balances_list$CBPS.weight, type = "scatter", include.unrefined.panel = TRUE, legend = TRUE,
+     ylim = c(-0.01,.1), main = "Standardized Mean Difference of Covariates (CBPS Weighting)")
+```
+
+My Covariate Balance Plots: this is how I got plots like the ones in Figure 4
+```{r}
+covs_to_check <- c("bachelors_perc", "med_household_income_adj", "white_perc",  "total_population", "TOT_REV", "TOT_ASSET", "TOT_EXP", "NTEEV2_ART", "NTEEV2_EDU", "NTEEV2_ENV", "NTEEV2_HEL", "NTEEV2_HMS", "NTEEV2_HOS", "NTEEV2_IFA", "NTEEV2_MMB", "NTEEV2_PSB", "NTEEV2_REL", "NTEEV2_UNI", "NTEEV2_UNU", "NTEEV2_NA", "REGION_MIDWEST", "REGION_NORTHEAST", "REGION_SOUTH", "REGION_WEST")
+
+bal_none <- tidy_bal_df(bal_data = bal_df$none, covariates = paste0("m.out.",covs_to_check))
+bal_ps.match <- tidy_bal_df(bal_data = bal_df$ps.match, covariates = paste0("m.out.",covs_to_check))
+bal_cbps.match <- tidy_bal_df(bal_data = bal_df$CBPS.match, covariates = paste0("m.out.",covs_to_check))
+bal_ps.weight <- tidy_bal_df(bal_data = bal_df$ps.weight, covariates = paste0("m.out.",covs_to_check))
+bal_cbps.weight <- tidy_bal_df(bal_data = bal_df$CBPS.weight, covariates = paste0("m.out.",covs_to_check))
+```
+
+```{r}
+ylims <- list("base" = c(-0.15, 0.05), "ntee" = c(-0.15, 0.05), "loc" = c(-0.17,0.17), "unrefined" = c(-0.15, 0.05), "all" = c(-0.17, 0.17))
+p_none <- no_int_no_SVC_plots(bal_none,
+                              match_method = "No Matching",
+                              ylim_base = ylims[["base"]], 
+                              ylim_ntee = ylims[["ntee"]],
+                              ylim_loc = ylims[["loc"]],
+                              ylim_all = ylims[["all"]],
+                              include.unrefined.panel = FALSE)
+p_ps.match <- no_int_no_SVC_plots(bal_ps.match, 
+                                  match_method = "PS Matching",
+                                  ylim_base = ylims[["base"]], 
+                                  ylim_ntee = ylims[["ntee"]],
+                                  ylim_loc = ylims[["loc"]],
+                                  ylim_all = ylims[["all"]],
+                                  ylim_unrefined = ylims[["unrefined"]],
+                                  include.unrefined.panel = TRUE)
+p_cbps.match <- no_int_no_SVC_plots(bal_cbps.match,
+                                  match_method = "CBPS Matching",
+                                  ylim_base = ylims[["base"]], 
+                                  ylim_ntee = ylims[["ntee"]],
+                                  ylim_loc = ylims[["loc"]],
+                                  ylim_all = ylims[["all"]],
+                                  include.unrefined.panel = FALSE)
+p_ps.weight <- no_int_no_SVC_plots(bal_ps.weight,
+                                  match_method = "PS Weighting",
+                                  ylim_base = ylims[["base"]], 
+                                  ylim_ntee = ylims[["ntee"]],
+                                  ylim_loc = ylims[["loc"]],
+                                  ylim_all = ylims[["all"]],
+                                  include.unrefined.panel = FALSE)
+p_cbps.weight <- no_int_no_SVC_plots(bal_cbps.weight,
+                                  match_method = "CBPS Weighting",
+                                  ylim_base = ylims[["base"]], 
+                                  ylim_ntee = ylims[["ntee"]],
+                                  ylim_loc = ylims[["loc"]],
+                                  ylim_all = ylims[["all"]],
+                                  include.unrefined.panel = FALSE)
+
+options(repr.plot.width = 6, repr.plot.height = 4)
+
+p_none$all
+# p_ps.match$all_unrefined
+# p_ps.match$all
+# p_cbps.match$all
+# p_ps.weight$all
+p_cbps.weight$all
+# 
+p_none$base
+# p_ps.match$base_unrefined
+# p_ps.match$base
+# p_cbps.match$base
+# p_ps.weight$base
+p_cbps.weight$base
+# 
+p_none$ntee
+# p_ps.match$ntee_unrefined
+# p_ps.match$ntee
+# p_cbps.match$ntee
+# p_ps.weight$ntee
+p_cbps.weight$ntee
+# 
+p_none$loc
+# p_ps.match$loc_unrefined
+# p_ps.match$loc
+# p_cbps.match$loc
+# p_ps.weight$loc
+p_cbps.weight$loc
+
+```
+
+The following chunk of code is how I got the information for tables like Table 1. Some stuff is commented out because I was using it in intermediate steps to check results.
+```{r}
+# deciles
+q_none <- quantile(signif(abs(bal_none$value[bal_none$unrefined == FALSE]), 3), probs = seq(0,1,0.1))
+q_ps.mat <- quantile(signif(abs(bal_ps.match$value[bal_ps.match$unrefined == FALSE]), 3), probs = seq(0,1,0.1))
+q_cbps.mat <- quantile(signif(abs(bal_cbps.match$value[bal_cbps.match$unrefined == FALSE]), 3), probs = seq(0,1,0.1))
+q_ps.w <- quantile(signif(abs(bal_ps.weight$value[bal_ps.weight$unrefined == FALSE]), 3), probs = seq(0,1,0.1))
+q_cbps.w <- quantile(signif(abs(bal_cbps.weight$value[bal_cbps.weight$unrefined == FALSE]), 3), probs = seq(0,1,0.1))
+
+# organize into df
+df <- cbind(as.data.frame(q_none), as.data.frame(q_ps.mat), as.data.frame(q_cbps.mat), as.data.frame(q_ps.w), as.data.frame(q_cbps.w))
+
+# pick winners per row
+df$winner <- colnames(df)[max.col(-df, ties.method = "first")]
+
+write.csv(df, file = paste0(folder_path_balance, save_name, "deciles.csv"))
+
+# write.csv(bal_none |> filter(unrefined == FALSE) |> select(-unrefined) |>
+#                 pivot_wider(names_from = covariate, values_from = value) |>
+#                 mutate(across(where(is.numeric), ~ round(.x, digits = 5))),
+#           file = "balance.csv")
+# 
+# write.csv(bal_cbps.weight |> filter(unrefined == FALSE) |> select(-unrefined) |>
+#                 pivot_wider(names_from = covariate, values_from = value) |>
+#                 mutate(across(where(is.numeric), ~ round(.x, digits = 5))),
+#           file = "balance.csv")
+```
+## Other Analyses
+Other analyses are very similar! Notice how the code above for With SVC versus NO SVC is pretty much identical. The main thing to change is the first chunk of code with the file paths, because that's where you tell it which matching data to pull. The rest just makes boilerplate plots and tables based on the matching data generated by matches_helper.R. The only other thing that might possibly need to be adjusted is the `ylims` variable for the covariate balance plots (which just controls literally the y-axis limits on the plots since these *can* vary from configuration to configuration and from variable to variable.)
+
+I put a "template" below where I just put TODO comments at the places you'd have to change something to do a different analysis.
+
+First, we pull the data created in run_matching.R. At the bottom of this chunk of code, we plot the distribution of matched set sizes (like Figure 3).
+```{r}
+library(readr)
+library(dplyr)
+library(tidyverse)
+library(PanelMatch)
+library(ggplot2)
+library(writexl)
+library(tidyr)
+library(stringr)
+library(khroma)
+source("matches_helper.R")
+
+# Set up the folder path and saved object names
+L = 3 # TODO: CHANGE THIS IF YOUR ANALYSIS USED A DIFFERENT LAG, E.G. L = 5
+
+folder_path_match <- "" # TODO: put the path to the matching data file
+folder_path_balance <- "" # TODO: put the path to the balance data file
+save_name <- paste0("Lag", L) 
+
+# Retrieve the PanelMatch objects
+matches_list <- readRDS(paste0(folder_path_match, save_name, ".rds"))
+
+# Retrieve the PanelBalance objects
+balances_list <- readRDS(paste0(folder_path_balance, save_name, ".rds"))
+
+# Make the balances for each lag easy to work with as a dataframe
+bal_df <- lapply(balances_list, summary)
+bal_df <- lapply(bal_df, as.data.frame)
+bal_df <- lapply(bal_df, tibble::rownames_to_column, var = "time")
+
+# Print information about matching and balances
+# write.csv(as.data.frame(summary(matches_list$none)), "match_summary.csv")
+summary(matches_list$none)
+summary(matches_list$ps.match)
+# summary(matches_list$CBPS.match)
+# summary(matches_list$ps.weight)
+# summary(matches_list$CBPS.weight)
+# 
+plot(matches_list$none)
+```
+
+Default Scatter Plots (See PanelMatch library for documentation)
+```{r}
+plot(balances_list$ps.match, type = "scatter", include.unrefined.panel = TRUE, legend = TRUE,
+     ylim = c(-0.01,.1), main = "Standardized Mean Difference of Covariates (PS Matching)")
+plot(balances_list$CBPS.match, type = "scatter", include.unrefined.panel = TRUE, legend = TRUE,
+     ylim = c(-0.01,.1), main = "Standardized Mean Difference of Covariates (CBPS Matching)")
+plot(balances_list$ps.weight, type = "scatter", include.unrefined.panel = TRUE, legend = TRUE,
+     ylim = c(-0.01,.1), main = "Standardized Mean Difference of Covariates (PS Weighting)")
+plot(balances_list$CBPS.weight, type = "scatter", include.unrefined.panel = TRUE, legend = TRUE,
+     ylim = c(-0.01,.1), main = "Standardized Mean Difference of Covariates (CBPS Weighting)")
+```
+
+My Covariate Balance Plots: this is how I got plots like the ones in Figure 4
+```{r}
+# These are the covariates we computed the balance for and want to plot
+covs_to_check <- c("bachelors_perc", "med_household_income_adj", "white_perc",  "total_population", "TOT_REV", "TOT_ASSET", "TOT_EXP", "NTEEV2_ART", "NTEEV2_EDU", "NTEEV2_ENV", "NTEEV2_HEL", "NTEEV2_HMS", "NTEEV2_HOS", "NTEEV2_IFA", "NTEEV2_MMB", "NTEEV2_PSB", "NTEEV2_REL", "NTEEV2_UNI", "NTEEV2_UNU", "NTEEV2_NA", "REGION_MIDWEST", "REGION_NORTHEAST", "REGION_SOUTH", "REGION_WEST")
+
+bal_none <- tidy_bal_df(bal_data = bal_df$none, covariates = paste0("m.out.",covs_to_check))
+bal_ps.match <- tidy_bal_df(bal_data = bal_df$ps.match, covariates = paste0("m.out.",covs_to_check))
+bal_cbps.match <- tidy_bal_df(bal_data = bal_df$CBPS.match, covariates = paste0("m.out.",covs_to_check))
+bal_ps.weight <- tidy_bal_df(bal_data = bal_df$ps.weight, covariates = paste0("m.out.",covs_to_check))
+bal_cbps.weight <- tidy_bal_df(bal_data = bal_df$CBPS.weight, covariates = paste0("m.out.",covs_to_check))
+```
+
+```{r}
+# TODO: If you run this and look at the plots, you might want to change the y-axis limits, so then you would have to modify ylims and remake the plots
+ylims <- list("base" = c(-0.15, 0.05), "ntee" = c(-0.15, 0.05), "loc" = c(-0.17,0.17), "unrefined" = c(-0.15, 0.05), "all" = c(-0.17, 0.17))
+p_none <- no_int_no_SVC_plots(bal_none,
+                              match_method = "No Matching",
+                              ylim_base = ylims[["base"]], 
+                              ylim_ntee = ylims[["ntee"]],
+                              ylim_loc = ylims[["loc"]],
+                              ylim_all = ylims[["all"]],
+                              include.unrefined.panel = FALSE)
+p_ps.match <- no_int_no_SVC_plots(bal_ps.match, 
+                                  match_method = "PS Matching",
+                                  ylim_base = ylims[["base"]], 
+                                  ylim_ntee = ylims[["ntee"]],
+                                  ylim_loc = ylims[["loc"]],
+                                  ylim_all = ylims[["all"]],
+                                  ylim_unrefined = ylims[["unrefined"]],
+                                  include.unrefined.panel = TRUE)
+p_cbps.match <- no_int_no_SVC_plots(bal_cbps.match,
+                                  match_method = "CBPS Matching",
+                                  ylim_base = ylims[["base"]], 
+                                  ylim_ntee = ylims[["ntee"]],
+                                  ylim_loc = ylims[["loc"]],
+                                  ylim_all = ylims[["all"]],
+                                  include.unrefined.panel = FALSE)
+p_ps.weight <- no_int_no_SVC_plots(bal_ps.weight,
+                                  match_method = "PS Weighting",
+                                  ylim_base = ylims[["base"]], 
+                                  ylim_ntee = ylims[["ntee"]],
+                                  ylim_loc = ylims[["loc"]],
+                                  ylim_all = ylims[["all"]],
+                                  include.unrefined.panel = FALSE)
+p_cbps.weight <- no_int_no_SVC_plots(bal_cbps.weight,
+                                  match_method = "CBPS Weighting",
+                                  ylim_base = ylims[["base"]], 
+                                  ylim_ntee = ylims[["ntee"]],
+                                  ylim_loc = ylims[["loc"]],
+                                  ylim_all = ylims[["all"]],
+                                  include.unrefined.panel = FALSE)
+
+options(repr.plot.width = 6, repr.plot.height = 4)
+
+p_none$all
+# p_ps.match$all_unrefined
+# p_ps.match$all
+# p_cbps.match$all
+# p_ps.weight$all
+p_cbps.weight$all
+# 
+p_none$base
+# p_ps.match$base_unrefined
+# p_ps.match$base
+# p_cbps.match$base
+# p_ps.weight$base
+p_cbps.weight$base
+# 
+p_none$ntee
+# p_ps.match$ntee_unrefined
+# p_ps.match$ntee
+# p_cbps.match$ntee
+# p_ps.weight$ntee
+p_cbps.weight$ntee
+# 
+p_none$loc
+# p_ps.match$loc_unrefined
+# p_ps.match$loc
+# p_cbps.match$loc
+# p_ps.weight$loc
+p_cbps.weight$loc
+
+```
+
+The following chunk of code is how I got the information for tables like Table 1. Some stuff is commented out because I was using it in intermediate steps to check results.
+```{r}
+# deciles
+q_none <- quantile(signif(abs(bal_none$value[bal_none$unrefined == FALSE]), 3), probs = seq(0,1,0.1))
+q_ps.mat <- quantile(signif(abs(bal_ps.match$value[bal_ps.match$unrefined == FALSE]), 3), probs = seq(0,1,0.1))
+q_cbps.mat <- quantile(signif(abs(bal_cbps.match$value[bal_cbps.match$unrefined == FALSE]), 3), probs = seq(0,1,0.1))
+q_ps.w <- quantile(signif(abs(bal_ps.weight$value[bal_ps.weight$unrefined == FALSE]), 3), probs = seq(0,1,0.1))
+q_cbps.w <- quantile(signif(abs(bal_cbps.weight$value[bal_cbps.weight$unrefined == FALSE]), 3), probs = seq(0,1,0.1))
+
+# organize into df
+df <- cbind(as.data.frame(q_none), as.data.frame(q_ps.mat), as.data.frame(q_cbps.mat), as.data.frame(q_ps.w), as.data.frame(q_cbps.w))
+
+# pick winners per row
+df$winner <- colnames(df)[max.col(-df, ties.method = "first")]
+
+write.csv(df, file = paste0(folder_path_balance, save_name, "deciles.csv"))
+
+# write.csv(bal_none |> filter(unrefined == FALSE) |> select(-unrefined) |>
+#                 pivot_wider(names_from = covariate, values_from = value) |>
+#                 mutate(across(where(is.numeric), ~ round(.x, digits = 5))),
+#           file = "balance.csv")
+# 
+# write.csv(bal_cbps.weight |> filter(unrefined == FALSE) |> select(-unrefined) |>
+#                 pivot_wider(names_from = covariate, values_from = value) |>
+#                 mutate(across(where(is.numeric), ~ round(.x, digits = 5))),
+#           file = "balance.csv")
+```
+
+# Estimating Causal Effects
+Recall that at this point, we choose the matching method with the best covariate balance overall from the previous step. Then, we only estimate causal effects under that matching strategy.
+```{r}
+# setup
+library(readr)
+library(dplyr)
+library(tidyverse)
+library(PanelMatch)
+library(ggplot2)
+library(tidyr)
+
+# Set up the folder path and saved object names
+L = 3 # lag, options: 1, 3, 5
+save_name <- paste0("Lag", L)
+
+folder_path <- "matches/with_svc/int_panelV2/config3/"
+
+# Retrieve the PanelMatch objects
+matches_list <- readRDS(paste0(folder_path, save_name, ".rds"))
+
+# Retrieve the PanelData object
+panel_df <- readRDS("panel_data/int_panelV2.rds")
+
+m.out.none <- matches_list$none # results under "No Matching"
+
+match_method <- "CBPS.weight" # Winning Matching method
+m.out <- matches_list[[match_method]] # results under Winning Matching method
+```
+
+```{r}
+# Estimates under no matching
+res_no.match <- PanelEstimate(sets = m.out.none,
+                     panel.data = panel_df,
+                     se.method = "conditional", # "bootstrap" "unconditional"
+                     parallel = TRUE,
+                     num.cores = 6,
+                     number.iterations = 10000)
+
+# Estimates under CBPS Weighting
+res <- PanelEstimate(sets = m.out,
+                     panel.data = panel_df,
+                     se.method = "conditional",
+                     parallel = TRUE,
+                     num.cores = 6,
+                     number.iterations = 10000)
+```
+
+```{r}
+# Plotting/Viewing results i.e. info in Table 2
+plot(res_no.match, main = "Estimated Effects (LOG REV) - No Matching")
+summary(res_no.match)
+# hist(res_no.match$bootstrapped.estimates) 
+# as.data.frame(summary(res_no.match)) |> mutate(across(where(is.numeric), ~ exp(.x)-1))
+
+plot(res, main = "Estimated Effects (LOG REV) - CBPS Weighting")
+summary(res)
+write.csv(as.data.frame(summary(res)) |> mutate(across(where(is.numeric), ~ round(exp(.x), 5))), "res.csv")
+# hist(res$bootstrapped.estimates)
+```
