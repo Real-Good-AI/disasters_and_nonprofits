@@ -11,6 +11,7 @@ This is because the files were downloaded in 2025 prior to the new tier system, 
 ## Data Cleaning and Pre-processing (General)
 This section goes through the step-by-step workflow for reproducing the data cleaning and processing for this project using the scripts in this directory.
 You will need to download the data. 
+
 First, ensure that the working directory is set to `disasters_and_nonprofits/` i.e the main directory of this Github repo.
 Then, run the file `clean_and_process/download_data.R`.
 After running the file, you should see the following in the `data/` directory:
