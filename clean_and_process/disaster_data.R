@@ -5,7 +5,7 @@ library(readr)
 library(dplyr)
 library(tidyverse)
 
-file_name <- "data/direct_loss_aggregated_output_28975.csv" # THIS MUST BE CHANGED ACCORDING TO THE SHELDUS DATA YOU DOWNLOAD
+file_name <- "data/direct_loss_aggregated_output_28975.csv" # TODO: THIS MUST BE CHANGED ACCORDING TO THE SHELDUS DATA YOU DOWNLOAD
 disasters <- as.data.table(read_csv(file_name, show_col_types = FALSE)) |>
       select(StateName, CountyName, County_FIPS, Year, Hazard, CropDmg, `CropDmg(ADJ 2021)`, PropertyDmg, `PropertyDmg(ADJ 2021)`)
 
