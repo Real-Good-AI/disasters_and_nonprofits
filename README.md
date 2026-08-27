@@ -1,6 +1,6 @@
 # Natural Hazard/Disaster Damage and the Nonprofit Sector
 Welcome to our disasters and nonprofits project repository. 
-This repo contains code for reproducing the results from [our manuscript](). 
+This repo contains code for reproducing the results from [our manuscript]https://github.com/Real-Good-AI/disasters_and_nonprofits/blob/main/manuscript.pdf. 
 Some select data files are also included, but in general to reproduce the results you would need to go through this repo step by step, beginning by downloading the raw data files and ending with the analysis presented in the paper.
 Below, you find instructions on reproducing the data cleaning and processing, which is the first step to reproducing the results.
 
@@ -13,15 +13,17 @@ This section goes through the step-by-step workflow for reproducing the data cle
 You will need to download the data. 
 
 First, ensure that the working directory is set to `disasters_and_nonprofits/` i.e the main directory of this Github repo.
+> Note: the files you will run to clean and process the data are in the `clean_and_process/`, but they all assume that your working directory is `disasters_and_nonprofits/`.
+
 Then, run the file `clean_and_process/download_data.R`.
-After running the file, you should see the following in the `data/` directory:
+After running the file, you should see the following in the `disasters_and_nonprofits/data/` directory:
 
 * BMF_UNIFIED_V1.1.csv
 * pc/
 * pf/
 * pz/
 
-`pc/`, `pf/`, and `pz/` are subdirectories. The `pc/` directory should be empty. The other two should be populated with CORE files.
+`pc/`, `pf/`, an
 
 ### Unified Business Master File (BMF)
 Next, you will need to clean and process the raw Unified BMF file (`BMF_UNIFIED_V1.1.csv`) by running the file `cleanBMF.R`. 
@@ -82,5 +84,7 @@ After finishing the county-level analysis, you may continue with `org_level_anal
 Files produced in these scripts should be saved to a directory called `gp_data/`.
 
 ## REAL Rating 
+This project is a REAL Rating Level 4 mainly due to the code for data cleaning and processing. 
+ChatGPT and Claude were used heavily to help write pieces of code for data cleaning, processing, and formatting data in plots.
 
-
+![REAL Rating Level 4](real-rating.png)
