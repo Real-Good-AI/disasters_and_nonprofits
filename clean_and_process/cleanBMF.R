@@ -3,7 +3,7 @@ library(data.table)
 library(dplyr)
 library(tibble)
 
-unified_bmf <- as.data.frame(read_csv("data/BMF_UNIFIED_V1.1.csv", show_col_types = FALSE)) # 3,462,997 records, 49 variables, 3,436,969 unique organizations
+unified_bmf <- as.data.frame(read_csv("../data/BMF_UNIFIED_V1.1.csv", show_col_types = FALSE)) # 3,462,997 records, 49 variables, 3,436,969 unique organizations
 unified_bmf <- unified_bmf[!(unified_bmf$EIN2 %in% "EIN-00-0000000"),] # 16 organizations dropped
 unified_bmf <- unified_bmf |> mutate_if(is.character, ~na_if(.,'')) # Replace any empty strings '' with NA values
       
@@ -52,4 +52,4 @@ bmf_subset |> mutate(NTEEV2 = replace_na(NTEEV2, "Missing")) |>
       theme(axis.text.x = element_text(angle = 45, vjust = 0.75, hjust=1))
 
 # Final counts: 3,430,166 records; 172,827 records with missing NTEEV2 (~5% of all records)
-saveRDS(bmf_subset |> select(-n), "data/cleanBMF.rds")
+saveRDS(bmf_subset |> select(-n), "../data/cleanBMF.rds")
