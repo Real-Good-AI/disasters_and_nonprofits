@@ -5,14 +5,14 @@ Some select data files are also included, but in general to reproduce the result
 Below, you find instructions on reproducing the data cleaning and processing, which is the first step to reproducing the results.
 
 **NOTE**: This project uses the harmonized/core/ (pre-tier layout) of the [National Center for Charity Statistics (NCCS) Core Files](https://nccs.urban.org/nccs/datasets/core/), which is now deprecated. 
-This is because the files were downloaded in 2025 prior to the new tier system, which launched in 2026. 
+This is because the files were downloaded in 2025 prior to the new tier system, which launched in 2026. However, the code for downloading the data files should still work. Again, just beware that you are downloading an old version of files in order to reproduce our results.
 > The citation for the version we downloaded is *Lacy, Jesse (2024). NCCS Core Series.*
 
 ## Data Cleaning and Pre-processing (General)
 This section goes through the step-by-step workflow for reproducing the data cleaning and processing for this project using the scripts in this directory.
 You will need to download the data. 
-First, ensure that the working directory is set to `rgai_summer2025_nccs/disasters_project`.
-Then, run the file `rgai_summer2025_nccs/disasters_project/download_data.R`.
+First, ensure that the working directory is set to `disasters_and_nonprofits/` i.e the main directory of this Github repo.
+Then, run the file `clean_and_process/download_data.R`.
 After running the file, you should see the following in the `data/` directory:
 
 * BMF_UNIFIED_V1.1.csv
@@ -79,4 +79,7 @@ Most results will be saved in one of the following three directories (which are 
 For `gp_approach/`, begin with the file `county_level_analysis.Rmd`. 
 After finishing the county-level analysis, you may continue with `org_level_analysis.Rmd`.
 Files produced in these scripts should be saved to a directory called `gp_data/`.
+
+## REAL Rating 
+
 
