@@ -47,3 +47,8 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+gp_approach/.DS_Store
+data/.DS_Store
+data/pf/.DS_Store
+causal_approach/.DS_Store
+.DS_Store
