@@ -1,6 +1,6 @@
 # Natural Hazard/Disaster Damage and the Nonprofit Sector
 Welcome to our disasters and nonprofits project repository. 
-This repo contains code for reproducing the results from [our manuscript]https://github.com/Real-Good-AI/disasters_and_nonprofits/blob/main/manuscript.pdf. 
+This repo contains code for reproducing the results from [our manuscript](https://github.com/Real-Good-AI/disasters_and_nonprofits/blob/main/manuscript.pdf). 
 Some select data files are also included, but in general to reproduce the results you would need to go through this repo step by step, beginning by downloading the raw data files and ending with the analysis presented in the paper.
 Below, you find instructions on reproducing the data cleaning and processing, which is the first step to reproducing the results.
 
@@ -13,19 +13,19 @@ This section goes through the step-by-step workflow for reproducing the data cle
 You will need to download the data. 
 
 First, ensure that the working directory is set to `disasters_and_nonprofits/` i.e the main directory of this Github repo.
-> Note: the files you will run to clean and process the data are in `clean_and_process/`, but they all assume that your working directory is `disasters_and_nonprofits/` and any output is saved to the `disasters_and_nonprofits/data/` directory.
+> Note: the files you will run to clean and process the data are in `clean_and_process/`, but they all assume that your working directory is `disasters_and_nonprofits/` and any output is saved to the `disasters_and_nonprofits/data/`.
 
 Then, run the file `clean_and_process/download_data.R`.
-After running the file, you should see the following in the `disasters_and_nonprofits/data/` directory:
+After running the file, you should see the following subdirectories in the `disasters_and_nonprofits/data/` directory:
 
-* BMF_UNIFIED_V1.1.csv
 * pc/
 * pf/
 * pz/
 
-`pc/`, `pf/`, an
+The `pc/` directory should be empty. The other two should be populated with CORE files.
 
 ### Unified Business Master File (BMF)
+Unfortunately, it seems you can no longer directly download the file version we used for the BMF from the NCCS website directly, so in order to use the same file we used, please download the file shared via this [Google Drive link](https://drive.google.com/file/d/1FYf_TSUtSwUj5_1990PtaXcuNRQhhl8G/view?usp=sharing) and save it to the `data/` directory.
 Next, you will need to clean and process the raw Unified BMF file (`BMF_UNIFIED_V1.1.csv`) by running the file `cleanBMF.R`. 
 This should produce the cleaned BMF file in the `data` folder with the file name `cleanBMF.rds`. 
 This must be done **before running** `cleanPZ.R`, `cleanPF.R`, or `create_mega_df.R`.
