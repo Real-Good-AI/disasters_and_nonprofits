@@ -9,6 +9,7 @@
 # Data files
 data/pz/*.csv
 data/pf/*.csv
+data/BMF_UNIFIED_V1.1.csv
 
 # User-specific files
 .Ruserdata
