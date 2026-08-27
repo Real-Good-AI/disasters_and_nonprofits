@@ -11,7 +11,7 @@ library(doParallel)
 source("matches_helper.R")
 rm(add_exposed, add_SVC, create_adj_list, no_int_no_SVC_plots, tidy_bal_df)
 
-default <- TRUE # CHANGE TO FALSE IF NOT RUNNING THE DEFAULT ANALYSIS
+default <- TRUE # TODO: CHANGE TO FALSE IF NOT RUNNING THE DEFAULT ANALYSIS
 
 if (default){
       refine_methods <- c("none")
