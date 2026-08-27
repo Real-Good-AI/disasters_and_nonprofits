@@ -1,10 +1,9 @@
 # Script to clean CORE files (data from individual organizations)
 
 # Note that there are different PZ file types: CE-NONPROFIT and C3-CHARITIES
-# This file must be run separately for each, appropriately changing files names as necessary
-# There will be a comment "SPECIFIC TO PZ TYPE" at lines of code where you would need to change the name accordingly
-# The first time you run this file, you won't have to change anything except for uncommenting the lines of code that actually save the data (look for "uncomment this line of code to save the file"). 
-# The second time you run the file, look for the comments "SPECIFIC TO PZ TYPE" to know what to change. 
+# This file must be run separately for each
+# The first time you run this file, you won't have to change anything except for uncommenting some lines of code (look for "uncomment this line of code to save the file"). 
+# The second time you run the file, look for the comment "SPECIFIC TO PZ TYPE" to know what to change. 
 
 library(data.table)
 library(readr)
@@ -22,7 +21,8 @@ colnames(dt.pz) <- vars.keep
 
 # Stacking all the years of data on top of each other
 year_values <- seq(from = 1991, to = 2021, by = 1)
-pz_type <- "C3-CHARITIES" # SPECIFIC TO PZ TYPE; options are "C3-CHARITIES" or "CE-NONPROFIT"
+pz_type <- "C3-CHARITIES" # SPECIFIC TO PZ TYPE; options are "C3-CHARITIES" (1st run) or "CE-NONPROFIT" (2nd run)
+
 for (year in year_values){
       # Get data, restrict to variables we care about, remove records that are exact duplicates, and make EIN2 the first column
       file_name <- paste0("data/pz/CORE-", year, "-501", pz_type, "-PZ-HRMN.csv")
@@ -149,7 +149,7 @@ dups <- dt.pz[dup_groups, on = key_var]
 
 #diagnostics <- dups[, compare_pair_dt(.SD, dollar_cols), by = .(EIN2, TAX_YEAR)]
 
-savePath <- "data/pz_merged.rds" # SPECIFIC TO PZ TYPE; options are "data/pz_merged.rds" or "data/pz_ce_merged.rds"
+if (pz_type == "C3-CHARITIES") {savePath <- "data/pz_merged.rds"} else {savePath <- "data/pz_ce_merged.rds"}
 # saveRDS(dt.pz, savePath) # uncomment this line of code to save the file
 
 ###################################
@@ -159,7 +159,7 @@ rm(list=ls())
 library(data.table)
 library(readr)
 
-dt <- readRDS("data/pz_merged.rds") # SPECIFIC TO PZ TYPE; options are "data/pz_merged.rds" or "data/pz_ce_merged.rds"
+if (pz_type == "C3-CHARITIES") {dt <- readRDS("data/pz_merged.rds")} else {dt <- readRDS("data/pz_ce_merged.rds")}
 bmf <- readRDS("data/cleanBMF.rds")
 
 # 1. Get all the records from organizations whose EIN is missing from bmf
@@ -174,7 +174,7 @@ nrow(count_only_in_dt1_clean[N < 5]) # PZ-C3: 3383 out of the 4058 have < 5 reco
 
 merged.dt <- merge(dt, bmf, by = "EIN2") # PZ-C3: 8,439,047 records from 788,372 unique orgs; PZ-CE: 3,923,315 records from 359,495 unique orgs
 
-savePath <- "data/pz_merged_bmf.rds" # SPECIFIC TO PZ TYPE; options are "data/pz_merged_bmf.rds" or "data/pz_ce_merged_bmf.rds"
+if (pz_type == "C3-CHARITIES"){savePath <- "data/pz_merged_bmf.rds"} else {savePath <- "data/pz_ce_merged_bmf.rds"}
 # saveRDS(merged.dt, savePath) # uncomment this line of code to save the file
 
 ###################################
@@ -185,7 +185,7 @@ library(data.table)
 library(readr)
 library(dplyr)
 
-merged.dt <- readRDS("data/pz_merged_bmf.rds") # SPECIFIC TO PZ TYPE; options are "pz_merged_bmf.rds" or "pz_ce_merged_bmf.rds"
+if (pz_type == "C3-CHARITIES"){merged.dt <- readRDS("data/pz_merged_bmf.rds")} else{merged.dt <- readRDS("data/pz_ce_merged_bmf.rds")}
 
 # Remove any orgs from state codes above 56 (because they don't correspond to actual states)
 merged.dt <- merged.dt |> mutate(state.FIPS = as.integer(state.FIPS)) |> filter(state.FIPS <= 56)
@@ -200,4 +200,5 @@ setnames(merged.dt,
 
 merged.dt[, na_count := NULL]
 
-# saveRDS(merged.dt, "data/pz_processed.rds") # SPECIFIC TO PZ TYPE; options are "pz_processed.rds" or "pz_ce_processed.rds"; uncomment this line of code to save the file
+# if (pz_type == "C3-CHARITIES") {saveRDS(merged.dt, "data/pz_processed.rds")} else {saveRDS(merged.dt, "data/pz_ce_processed.rds")} # uncomment this line of code to save the file
+
