@@ -1,10 +1,12 @@
-'library(readr)
+# This code was used to look at different examples of spatially varying coefficients
+# It is the source code for Figure 2 in the manuscript
+
+library(readr)
 library(tidyr)
 library(dplyr)
 library(tidyverse)
 library(fields)
 library(MASS)
-library(maps) # maps::county() maps::usa() maps:map()
 library(ggplot2)
 library(cowplot)
 
@@ -16,39 +18,6 @@ df <- df |>
 
 df_coords <- df |> dplyr::select(geoid_2010, CountyID, lat, lng) |> distinct()
 
-county <- map_data("county")
-county <- county |> mutate(polyname = paste(region, subregion, sep = ","))
-data("county.fips")
-county <- county |> left_join(county.fips, by = "polyname")'
-#####
-##### Plotting population in 2015 across US counties
-df_pop <- df |> filter(TAX_YEAR == 2015) |> dplyr::select(geoid_2010, CountyID, lat, lng, total_population) |> distinct()
-
-df_plot <- left_join(county, df_pop |> 
-                             dplyr::select(geoid_2010, total_population) |> 
-                             mutate(geoid_2010 = as.integer(geoid_2010)) |>
-                             rename(fips = geoid_2010), 
-                     by = "fips")
-
-ggplot(data=county, aes(x=long, y=lat, fill=region, group=group)) + 
-      geom_polygon(color = "black") + 
-      guides(fill="none") + 
-      theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(),
-            axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank()) + 
-      ggtitle('U.S. Map with Couties') + 
-      coord_fixed(1.3)
-
-ggplot(data=df_plot, aes(x=long, y=lat, fill=log(total_population), group=group)) + 
-      geom_polygon(color = "black", linewidth = 0.2) + 
-      guides(fill="none") + 
-      viridis::scale_fill_viridis(name="LOG(Population)") +
-      theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(),
-            axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank()) + 
-      ggtitle('U.S. Map with Couties, log(population)') + 
-      coord_fixed(1.3)
-
-
-#####
 # Plotting the eigenvectors for different smoothness
 nu_values <- list("point5"= 0.5, "2point5"= 2.5, "5"=5, "10"= 10)
 for (smooth_val in names(nu_values)){
