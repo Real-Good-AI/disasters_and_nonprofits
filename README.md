@@ -1,6 +1,6 @@
 # Natural Hazard/Disaster Damage and the Nonprofit Sector
 Welcome to our disasters and nonprofits project repository. 
-This repo contains code for reproducing the results from [our manuscript](https://github.com/Real-Good-AI/disasters_and_nonprofits/blob/main/manuscript.pdf). 
+This repo contains code for reproducing the results from [our manuscript](https://arxiv.org/abs/2609.04136). 
 Some select data files are also included, but in general to reproduce the results you would need to go through this repo step by step, beginning by downloading the raw data files and ending with the analysis presented in the paper.
 Below, you find instructions on reproducing the data cleaning and processing, which is the first step to reproducing the results.
 
